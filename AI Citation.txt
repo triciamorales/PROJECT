@@ -1,0 +1,692 @@
+Help me write code to put into a jupyter notebook that will render exploratory data charts and a geographic map of species occurrences in the Mid-Atlantic
+
+Here is a complete, self-contained Python script designed for a Jupyter Notebook.
+
+This solution uses pygbif to pull live species occurrence data from the Global Biodiversity Information Facility (GBIF) bounded to the Mid-Atlantic region (36.5°N to 41.5°N, -80.5°W to -74.0°W). It uses pandas, seaborn, and matplotlib for exploratory charts and folium to render an interactive map with cluster markers and heatmaps.   
+Technical Documentation - GBIF
+
+Step 1: Install Required Libraries
+Run this in a notebook cell first if you don't have the packages installed:
+
+Bash
+!pip install pygbif pandas matplotlib seaborn folium
+Step 2: Full Jupyter Notebook Script
+Paste and run the following code in your notebook cell:
+
+Python
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import folium
+from folium.plugins import MarkerCluster, HeatMap
+from pygbif import occurrences as occ
+
+# Set visual style
+sns.set_theme(style="whitegrid")
+plt.rcParams['figure.figsize'] = (10, 5)
+
+# ================= ==============================================
+# 1. FETCH DATA FROM GBIF API (Mid-Atlantic Bounding Box)
+# ================================================================
+# Bounding box coordinates covering NC/VA border up through NJ/PA
+LAT_RANGE = "36.5,41.5"
+LON_RANGE = "-80.5,-74.0"
+
+print("Fetching species occurrences in the Mid-Atlantic region...")
+
+# Request up to 300 records with valid coordinates
+data = occ.search(
+    decimalLatitude=LAT_RANGE,
+    decimalLongitude=LON_RANGE,
+    hasCoordinate=True,
+    limit=300
+)
+
+records = data['results']
+df = pd.DataFrame(records)
+
+# Clean and select essential columns
+columns_needed = ['scientificName', 'species', 'family', 'decimalLatitude', 'decimalLongitude', 'year', 'basisOfRecord']
+existing_cols = [col for col in columns_needed if col in df.columns]
+df_clean = df[existing_cols].dropna(subset=['decimalLatitude', 'decimalLongitude']).copy()
+
+print(f"Successfully loaded {len(df_clean)} records.\n")
+print(df_clean.head())
+
+# ================= ==============================================
+# 2. EXPLORATORY DATA CHARTS
+# ================================================================
+
+# Chart 1: Top 10 Most Frequently Recorded Species
+fig, ax = plt.subplots(figsize=(10, 5))
+top_species = df_clean['species'].value_counts().head(10)
+sns.barplot(x=top_species.values, y=top_species.index, palette="viridis", ax=ax)
+ax.set_title("Top 10 Most Recorded Species in the Mid-Atlantic Search", fontsize=14, fontweight='bold')
+ax.set_xlabel("Observation Count")
+ax.set_ylabel("Species")
+plt.tight_layout()
+plt.show()
+
+# Chart 2: Records by Data Type (Basis of Record)
+if 'basisOfRecord' in df_clean.columns:
+    fig, ax = plt.subplots(figsize=(8, 4))
+    record_types = df_clean['basisOfRecord'].value_counts()
+    sns.barplot(x=record_types.index, y=record_types.values, palette="mako", ax=ax)
+    ax.set_title("Distribution of Records by Basis of Record", fontsize=14, fontweight='bold')
+    ax.set_xlabel("Record Type")
+    ax.set_ylabel("Count")
+    plt.xticks(rotation=15)
+    plt.tight_layout()
+    plt.show()
+
+# Chart 3: Temporal Distribution (Observations per Year)
+if 'year' in df_clean.columns:
+    df_years = df_clean.dropna(subset=['year']).copy()
+    df_years['year'] = df_years['year'].astype(int)
+    
+    fig, ax = plt.subplots(figsize=(10, 4))
+    sns.histplot(df_years['year'], bins=15, kde=True, color="#2b5c8f", ax=ax)
+    ax.set_title("Distribution of Occurrence Records Over Time", fontsize=14, fontweight='bold')
+    ax.set_xlabel("Year")
+    ax.set_ylabel("Count")
+    plt.tight_layout()
+    plt.show()
+
+# ================= ==============================================
+# 3. INTERACTIVE GEOGRAPHIC MAP (Folium)
+# ================================================================
+
+# Center map on the Mid-Atlantic region
+map_center = [39.0, -77.2]
+m = folium.Map(location=map_center, zoom_start=7, tiles="Cartodb Positron")
+
+# Layer 1: Clustered Point Markers
+marker_cluster = MarkerCluster(name="Clustered Records").add_to(m)
+
+for idx, row in df_clean.iterrows():
+    species_name = row.get('species', row.get('scientificName', 'Unknown Species'))
+    year_val = row.get('year', 'N/A')
+    
+    popup_text = f"<b>Species:</b> {species_name}<br><b>Year:</b> {year_val}"
+    
+    folium.Marker(
+        location=[row['decimalLatitude'], row['decimalLongitude']],
+        popup=folium.Popup(popup_text, max_width=250),
+        tooltip=species_name,
+        icon=folium.Icon(color="teal", icon="leaf", prefix="fa")
+    ).add_to(marker_cluster)
+
+# Layer 2: Density Heatmap
+heat_data = [[row['decimalLatitude'], row['decimalLongitude']] for idx, row in df_clean.iterrows()]
+HeatMap(heat_data, name="Observation Density (Heatmap)", show=False).add_to(m)
+
+# Layer Controls to toggle layers on/off
+folium.LayerControl().add_to(m)
+
+# Display map directly in Jupyter Notebook
+m
+What This Notebook Script Does:
+Pulls Live Open-Access Data: Uses pygbif to query GBIF's global dataset inside the bounding coordinates for Virginia, Maryland, Delaware, Pennsylvania, and New Jersey.   
+Technical Documentation - GBIF
+
+Cleans & Preprocesses Data: Selects core metadata tags (scientific name, coordinates, year, basis of record) and drops incomplete entries.   
+GBIF.us
+
+Generates 3 Exploratory Data Plots:
+
+Species Frequency: Bar plot of top observed species.
+
+Observation Methods: Human observations vs. preserved specimens vs. machine observations.
+
+Temporal Trends: A histogram showing observation density over time.
+
+Renders an Interactive Map:
+
+Uses Folium to display dynamic, zoomable points.
+
+Groups nearby species points into clusters so the map doesn't get cluttered.
+
+Includes a toggleable Density Heatmap layer to view biodiversity hotspots.
+
+Want to focus this script on a specific target species or taxon key (e.g., birds, invasive plants)?
+
+Yes
+I will be studying just callery pear and will be using GBIF API and worldclim/USGS earth explorer environmental grids
+
+Targeting Callery pear (Pyrus calleryana) requires querying the exact GBIF Taxon Key (3012148 or fetched via name_backbone) to catch all wild occurrences and cultivar entries (like Bradford, Chanticleer, and Cleveland Select).   
+MC-IRIS
+
+Additionally, raster spatial matching requires pulling Environmental Grids from WorldClim (bioclimatic variables) or USGS/Earthexplorer (DEM elevation / Land Cover) and overlaying point-occurrence data.
+
+Step 1: Install Extended Libraries
+This requires rioxarray and rasterio for processing spatial grids (.tif files):
+
+Bash
+!pip install pygbif pandas matplotlib seaborn folium rasterio rioxarray xarray
+Step 2: Full Python Workflow for Jupyter Notebook
+Python
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import folium
+from folium.plugins import MarkerCluster, HeatMap
+from pygbif import species as sp_api, occurrences as occ
+import rasterio
+
+# Visual styling
+sns.set_theme(style="whitegrid")
+plt.rcParams['figure.figsize'] = (10, 5)
+
+# ================================================================
+# 1. FETCH CALLERY PEAR OCCURRENCES BY TAXON KEY
+# ================================================================
+
+# Get the GBIF Backbone Taxon Key for Pyrus calleryana
+species_name = "Pyrus calleryana"
+match = sp_api.name_backbone(name=species_name)
+taxon_key = match['usageKey']
+
+print(f"Matched Taxon: {match['scientificName']} (Taxon Key: {taxon_key})")
+
+# Bounding Box for Mid-Atlantic (NC/VA border to NY/PA line)
+LAT_RANGE = "36.5,41.5"
+LON_RANGE = "-80.5,-74.0"
+
+print("Fetching Callery pear occurrences from GBIF...")
+
+# Request up to 1,000 occurrence records
+gbif_data = occ.search(
+    taxonKey=taxon_key,
+    decimalLatitude=LAT_RANGE,
+    decimalLongitude=LON_RANGE,
+    hasCoordinate=True,
+    limit=1000
+)
+
+df = pd.DataFrame(gbif_data['results'])
+
+# Extract key columns
+needed_cols = ['species', 'scientificName', 'decimalLatitude', 'decimalLongitude', 'year', 'basisOfRecord', 'stateProvince']
+valid_cols = [c for c in needed_cols if c in df.columns]
+df_pear = df[valid_cols].dropna(subset=['decimalLatitude', 'decimalLongitude']).copy()
+
+print(f"Retrieved {len(df_pear)} Callery Pear records across the Mid-Atlantic.\n")
+print(df_pear.head())
+
+# ================================================================
+# 2. EXPLORATORY DATA CHARTS (Callery Pear Dynamics)
+# ================================================================
+
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+# Plot 1: Basis of Record (Human Observation vs Specimen)
+if 'basisOfRecord' in df_pear.columns:
+    sns.countplot(data=df_pear, y='basisOfRecord', palette='crest', order=df_pear['basisOfRecord'].value_counts().index, ax=axes[0])
+    axes[0].set_title("Callery Pear Records by Basis of Record", fontsize=12, fontweight='bold')
+    axes[0].set_xlabel("Count")
+
+# Plot 2: Observations by State/Province
+if 'stateProvince' in df_pear.columns:
+    top_states = df_pear['stateProvince'].value_counts().head(8)
+    sns.barplot(x=top_states.values, y=top_states.index, palette='viridis', ax=axes[1])
+    axes[1].set_title("Top Mid-Atlantic States for Callery Pear Observations", fontsize=12, fontweight='bold')
+    axes[1].set_xlabel("Count")
+
+plt.tight_layout()
+plt.show()
+
+# ================================================================
+# 3. EXTRACT ENVIRONMENTAL GRID VALUES AT SPECIES LOCATIONS
+# ================================================================
+"""
+NOTE: Download a WorldClim raster geotiff (e.g., 'wc2.1_30s_bio_1.tif' for Mean Annual Temp) 
+or USGS NLCD / Elevation DEM geotiff file, place it in your notebook directory, 
+and set grid_file_path below.
+"""
+
+grid_file_path = "wc2.1_30s_bio_1.tif"  # Replace with your downloaded raster file
+
+try:
+    with rasterio.open(grid_file_path) as src:
+        # Extract coordinates as a list of tuples (lon, lat)
+        coords = [(x, y) for x, y in zip(df_pear['decimalLongitude'], df_pear['decimalLatitude'])]
+        
+        # Sample raster values at occurrence points
+        df_pear['env_val'] = [x[0] for x in src.sample(coords)]
+        
+        # Filter out nodata values (e.g., points falling in oceans/lakes)
+        df_env = df_pear[df_pear['env_val'] > -9999]
+
+        # Plot Environmental Niche Histogram
+        plt.figure(figsize=(9, 4))
+        sns.histplot(df_env['env_val'], kde=True, color='#d95f02', bins=20)
+        plt.title("Environmental Grid Value Distribution at Callery Pear Locations", fontsize=12, fontweight='bold')
+        plt.xlabel("Grid Parameter Value (e.g., Annual Mean Temp / Elevation)")
+        plt.ylabel("Frequency")
+        plt.show()
+        
+except FileNotFoundError:
+    print(f"\n[Info] Raster file '{grid_file_path}' not found.")
+    print("Download a GeoTIFF from WorldClim or USGS Earth Explorer to sample environmental values.")
+
+# ================================================================
+# 4. INTERACTIVE GEOGRAPHIC MAP (Callery Pear Density)
+# ================================================================
+
+# Initialize map centered on the Mid-Atlantic
+m = folium.Map(location=[38.8, -77.1], zoom_start=7, tiles="Cartodb Positron")
+
+# Cluster layer for precise points
+marker_cluster = MarkerCluster(name="Callery Pear Occurrences").add_to(m)
+
+for idx, row in df_pear.iterrows():
+    popup_info = f"""
+    <b>Species:</b> Pyrus calleryana<br>
+    <b>Year:</b> {row.get('year', 'N/A')}<br>
+    <b>Record Type:</b> {row.get('basisOfRecord', 'N/A')}
+    """
+    
+    folium.CircleMarker(
+        location=[row['decimalLatitude'], row['decimalLongitude']],
+        radius=5,
+        color="#e6550d",
+        fill=True,
+        fill_color="#fdae6b",
+        fill_opacity=0.7,
+        popup=folium.Popup(popup_info, max_width=200),
+        tooltip="Pyrus calleryana"
+    ).add_to(marker_cluster)
+
+# Density Heatmap layer
+heat_data = [[row['decimalLatitude'], row['decimalLongitude']] for idx, row in df_pear.iterrows()]
+HeatMap(heat_data, name="Invasion Hotspot Density", radius=12, blur=15, show=True).add_to(m)
+
+folium.LayerControl().add_to(m)
+
+# Render map in notebook cell
+m
+Workflow Key Features
+Backbone Resolution: Automatically maps Pyrus calleryana to GBIF key 3012148—ensuring you don't miss entries logged under synonym names or cultivars.
+
+Raster Grid Sampling (rasterio): Demonstrates how to take your point vector data (lat/lon) and sample directly from downloaded GeoTIFF rasters (WorldClim bioclimatic grids or USGS NLCD land cover) to plot Callery pear's environmental niche.
+
+Invasion Heatmapping: Builds a density layer on top of clustered points to highlight urban/suburban core invasion points across the Mid-Atlantic.
+
+Need help setting up spatial joining (e.g., extracting WorldClim BioClim variables directly via Python without manual downloading)?
+
+Yes
+I got this error
+
+It looks like you forgot to attach or paste the error message!
+
+Please paste the exact error traceback or message you encountered, and let me know which cell or section of the code threw it (for example, during the pygbif fetch, the rasterio sampling, or the folium rendering).
+
+Once you share it, I'll identify the root cause and help you fix it right away!
+
+ModuleNotFoundError: No module named 'cartopy' means the cartopy library is missing from your Python environment.
+
+Solution 1: Install cartopy directly inside your notebook
+Run this command in a new code cell at the top of your Jupyter Notebook:
+
+Bash
+!pip install cartopy
+Note: If you are running Anaconda or Conda, cartopy can sometimes have C-library dependencies (GEOS/PROJ). If pip fails or throws C-compilation errors, use Conda instead:
+
+Bash
+!conda install -c conda-forge cartopy -y
+Solution 2: Restart the Kernel
+After running the installation command above:
+
+Go to the top notebook menu bar.
+
+Click Kernel 
+→ Restart Kernel.
+
+Re-run your code cell.
+
+Alternative: Remove cartopy if you are using folium
+If you are using folium for interactive maps (from the script provided earlier), you don't actually need cartopy. You can simply delete or comment out lines 5 and 6:
+
+Python
+# Comment out or remove these two lines:
+# import cartopy.crs as ccrs
+# import cartopy.feature as cfeature
+How do I make the font larger in markdown cells in jupyter notebook
+
+To increase the font size of Markdown cells in a Jupyter Notebook, you can use HTML styling directly inside the cell, or apply CSS to change the font size notebook-wide.
+
+Option 1: Change Font Size for a Single Cell (HTML)
+You can wrap your text in HTML tags with inline CSS styling right inside your Markdown cell:
+
+Using <span> tags (Best for inline text or paragraphs):
+
+HTML
+<span style="font-size: 20px;">This text will render larger.</span>
+Using <div> tags (Best for entire blocks of text):
+
+HTML
+<div style="font-size: 1.5em;">
+This entire paragraph will render with a larger font size.
+</div>
+Option 2: Change Font Size Notebook-Wide (Custom CSS)
+To enlarge the Markdown font across all cells in your current notebook, run the following code in a Python cell:
+
+Python
+from IPython.display import display, HTML
+
+# Adjust font-size as needed (e.g., 18px, 20px, 120%)
+display(HTML("<style>.rendered_html { font-size: 18px; }</style>"))
+To verify: Run a Markdown cell in the notebook. All text inside Markdown cells will immediately appear larger.
+
+Option 3: JupyterLab Settings (Global Interface Change)
+If you are using JupyterLab:
+
+Go to the top menu and select Settings 
+→ Settings Editor (or press Ctrl + , / Cmd + ,).
+
+Search for Text Editor or Notebook.
+
+Locate Markdown Cell Font Size (or Code Font Size) and increase the pixel value (e.g., from 14 to 18).
+
+help me fix this error
+
+The error FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Documents\\ODU\\DR45005\\DR45005\\PROJECT\\DATA\\pyrus_calleryana_gbif.csv' means Pandas is looking for pyrus_calleryana_gbif.csv inside that folder, but the file either isn't there, has a slightly different filename, or has a double file extension (like .csv.csv).
+
+Step 1: Check what files actually exist in that directory
+Add a quick os.listdir() check in a cell before your code to see the exact names of all files inside your DATA folder:
+
+Python
+import os
+
+DATA_DIR = r'C:\Documents\ODU\DR45005\DR45005\PROJECT\DATA'
+
+# Print all files inside your DATA directory
+print("Files in DATA directory:")
+for f in os.listdir(DATA_DIR):
+    print(" -", f)
+Step 2: How to fix it based on the output
+If the file name is slightly different (e.g., pyrus_calleryana.csv or occurrence.txt):
+Update line 14 to match the actual file name printed from Step 1:
+
+Python
+gbif_path = os.path.join(DATA_DIR, 'YOUR_ACTUAL_FILENAME_HERE.csv')
+If Windows hidden extensions added .csv.csv:
+Sometimes Windows hides extensions, making a file named pyrus_calleryana_gbif.csv.csv. Step 1 will reveal this.
+
+If the file hasn't been downloaded or moved yet:
+Ensure your downloaded GBIF occurrence CSV file is physically moved into:
+C:\Documents\ODU\DR45005\DR45005\PROJECT\DATA\
+
+Quick Tip for standard GBIF Tab-Delimited Downloads
+If your file came directly from GBIF as a raw download, it is often tab-delimited (.tsv or .txt). Keep sep='\t' in pd.read_csv() as you already have, and just make sure the file extension in gbif_path matches the exact downloaded file name (e.g., 'occurrence.txt' or 'pyrus_calleryana_gbif.tsv').
+
+I got another error, help me fix the code
+
+The error CPLE_OpenFailedError / RasterioIOError: DATA\bio1_annual_mean_temp.tif: No such file or directory means Rasterio cannot find bio1_annual_mean_temp.tif inside your DATA folder.
+
+This usually happens when raster file names differ slightly (e.g., wc2.1_30s_bio_1.tif, bio_1.tif, or .tif.tif) or when raster files are located in subfolders.
+
+Step 1: Diagnose your folder contents
+Run this snippet in a cell to check the exact file names inside your DATA directory:
+
+Python
+import os
+
+# List all raster (.tif) files in your DATA folder
+tif_files = [f for f in os.listdir(DATA_DIR) if f.lower().endswith('.tif')]
+
+print("Found GeoTIFF files in DATA directory:")
+for tif in tif_files:
+    print(f"  - '{tif}'")
+Step 2: Fixed Code Options
+Option A: Match exact file names (Recommended)
+Replace Cell 13 with this safe version that automatically checks whether each file exists before trying to open it:
+
+Python
+import os
+import rasterio
+
+# Define dictionary mapping variable names to their expected filenames
+clim_files = {
+    'Bio1': os.path.join(DATA_DIR, 'bio1_annual_mean_temp.tif'),
+    'Bio6': os.path.join(DATA_DIR, 'bio6_min_temp_coldest_month.tif'),
+    'Bio12': os.path.join(DATA_DIR, 'bio12_annual_precip.tif'),
+    'Bio15': os.path.join(DATA_DIR, 'bio15_precip_seasonality.tif')
+}
+
+clim_datasets = {}
+
+for var_name, filepath in clim_files.items():
+    if os.path.exists(filepath):
+        src = rasterio.open(filepath)
+        clim_datasets[var_name] = src
+        print(f"✅ {var_name} CRS: {src.crs} | Shape: {src.shape}")
+    else:
+        print(f"❌ Missing file for {var_name}: '{filepath}'")
+
+# Load NLCD Land Cover
+landcover_path = os.path.join(DATA_DIR, 'nlcd_landcover.tif')
+
+if os.path.exists(landcover_path):
+    landcover_src = rasterio.open(landcover_path)
+    print(f"✅ NLCD Land Cover CRS: {landcover_src.crs} | Shape: {landcover_src.shape}")
+else:
+    print(f"❌ Missing NLCD file: '{landcover_path}'")
+Option B: Dynamic Matching (If filenames use WorldClim defaults)
+If your downloaded WorldClim files have original names like wc2.1_30s_bio_1.tif or bio_1.tif, map them directly:
+
+Python
+# Update these string values to match the exact names printed in Step 1:
+clim_files = {
+    'Bio1': os.path.join(DATA_DIR, 'wc2.1_30s_bio_1.tif'),
+    'Bio6': os.path.join(DATA_DIR, 'wc2.1_30s_bio_6.tif'),
+    'Bio12': os.path.join(DATA_DIR, 'wc2.1_30s_bio_12.tif'),
+    'Bio15': os.path.join(DATA_DIR, 'wc2.1_30s_bio_15.tif')
+}
+How do I get a more detailed basemap in my notebook? Do I need to import a new environement?
+
+You do not need to set up or import a new environment. Increasing the level of detail, terrain/satellite context, or street features in your basemaps is handled entirely by changing your map provider or updating your plotting library's parameters within your existing environment.
+
+How to implement detailed basemaps depends on whether you are working with Folium (interactive web maps) or GeoPandas / Matplotlib / Cartopy (static map figures).
+
+Option 1: Detailed Basemaps in Folium (Interactive)
+Folium supports high-resolution street, topography, and aerial imagery tiles out of the box without extra installs.
+
+A. Free OpenStreetMap & Imagery Tiles
+You can pass custom tile URLs directly into folium.Map():
+
+Python
+import folium
+
+map_center = [38.8, -77.1]
+
+# High-Detail Satellite / Aerial Imagery (Esri World Imagery)
+m = folium.Map(
+    location=map_center,
+    zoom_start=10,
+    tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    attr="Esri World Imagery"
+)
+
+# Detailed Topographic Map (Esri World Topo)
+folium.TileLayer(
+    tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+    attr="Esri World Topo",
+    name="Topography"
+).add_to(m)
+
+# Standard OpenStreetMap (Detailed Streets/Labels)
+folium.TileLayer("OpenStreetMap", name="Street Level").add_to(m)
+
+# Add Layer Control to toggle between basemaps interactively
+folium.LayerControl().add_to(m)
+m
+B. Free Stadia Maps / Stamen Styles
+If you register a free API key at Stadia Maps, you can access high-detail styles like Stadia.AlidadeSmoothDark, Stadia.Outdoors, or Stadia.OSMBright.
+
+Option 2: Detailed Basemaps in GeoPandas / Matplotlib (Static)
+If you are plotting static GeoDataFrames (gdf_occurrences.plot()) with matplotlib, install contextily to pull high-res web map tiles directly underneath your vector data:
+
+Step 1: Install contextily
+In a notebook cell:
+
+Bash
+!pip install contextily
+Step 2: Plot GeoDataFrame with Detailed Contextily Basemap
+Important: Contextily requires your GeoDataFrame to be projected in Web Mercator (EPSG:3857).
+
+Python
+import geopandas as gpd
+import matplotlib.pyplot as plt
+import contextily as ctx
+
+# 1. Ensure your points are in EPSG:3857 (Web Mercator)
+gdf_3857 = gdf_occurrences.to_crs(epsg=3857)
+
+# 2. Plot occurrence points
+fig, ax = plt.subplots(figsize=(12, 10))
+gdf_3857.plot(ax=ax, color='red', markersize=15, alpha=0.7, label='Callery Pear')
+
+# 3. Add High-Detail Basemap Tiles (e.g., Esri World Imagery or OpenStreetMap)
+# Options for source: ctx.providers.Esri.WorldImagery, ctx.providers.OpenStreetMap.Mapnik, ctx.providers.USGS.USTopo
+ctx.add_basemap(ax, source=ctx.providers.Esri.WorldImagery, zoom=10)
+
+ax.set_title("Callery Pear Distribution (Detailed Aerial Basemap)", fontsize=14, fontweight='bold')
+ax.set_axis_off()
+plt.tight_layout()
+plt.show()
+Key Takeaway Summary
+Interactive Notebook Maps (folium): Use Esri World Imagery (World_Imagery) or Esri Topo tile services directly via URL parameters—no new libraries needed.
+
+Static Vector/Raster Plots (geopandas/matplotlib): Use contextily to automatically fetch high-resolution background imagery matching your map extent.
+
+Help me fix this error
+
+The error occurs because your raster arrays have different dimensions (grid resolutions/extents):   
+image_3154df.png
+
+Array at index 0 (bio1_data / WorldClim) has 23,32,800 elements (likely at a 30-arcsecond resolution, e.g., ~1km).   
+image_3154df.png
+
+Array at index 4 (nlcd_data / Land Cover) has 25,000,000 elements (5000x5000 grid at 30m resolution).   
+image_3154df.png
+
+np.column_stack requires every flattened array to have the exact same length to build your feature matrix X_present.   
+image_3154df.png
+
+Solution: Resample Rasters to Match NLCD Grid
+You need to reproject and resample your climate rasters (bio1, bio6, bio12, bio15) so their resolution, bounding box, and dimensions match nlcd_landcover.tif exactly.
+
+Replace your dataset loading/extraction code before Cell 10 with this rasterio.reproject pipeline:
+
+Python
+import numpy as np
+import rasterio
+from rasterio.enums import Resampling
+from rasterio.warp import reproject, calculate_default_transform
+
+# 1. Read NLCD reference raster (Target Grid)
+with rasterio.open(landcover_path) as nlcd_src:
+    nlcd_data = nlcd_src.read(1)
+    target_crs = nlcd_src.crs
+    target_transform = nlcd_src.transform
+    target_shape = nlcd_src.shape  # (height, width)
+
+def read_and_resample(raster_path, target_shape, target_crs, target_transform):
+    """Resamples any raster to match NLCD's shape, CRS, and extent."""
+    with rasterio.open(raster_path) as src:
+        resampled_array = np.empty(target_shape, dtype=np.float32)
+        reproject(
+            source=rasterio.band(src, 1),
+            destination=resampled_array,
+            src_transform=src.transform,
+            src_crs=src.crs,
+            dst_transform=target_transform,
+            dst_crs=target_crs,
+            resampling=Resampling.bilinear
+        )
+        return resampled_array
+
+# 2. Load and resample all climate variables to match NLCD dimensions
+bio1_data = read_and_resample(clim_files['Bio1'], target_shape, target_crs, target_transform)
+bio6_data = read_and_resample(clim_files['Bio6'], target_shape, target_crs, target_transform)
+bio12_data = read_and_resample(clim_files['Bio12'], target_shape, target_crs, target_transform)
+bio15_data = read_and_resample(clim_files['Bio15'], target_shape, target_crs, target_transform)
+
+# 3. Stack features (all arrays now have size 25,000,000)
+X_present = np.column_stack([
+    bio1_data.ravel(),
+    bio6_data.ravel(),
+    bio12_data.ravel(),
+    bio15_data.ravel(),
+    nlcd_data.ravel()
+])
+
+print("✅ Feature matrix created successfully! Shape:", X_present.shape)
+What this fix does:
+Takes the shape (5000 x 5000), CRS, and affine transform matrix from nlcd_landcover.tif.
+
+Uses rasterio.warp.reproject to align and interpolate bio1, bio6, bio12, and bio15 directly into that 5000x5000 grid.
+
+Every flattened array now yields 25,000,000 values, resolving the ValueError.   
+image_3154df.png
+
+help me fix this data- there is a red dot in the middle of the ocean which is not right
+
+The point off the coast near Accomack (around the Chesapeake Bay / Atlantic area) is a classic spatial data artifact. It occurs because GBIF datasets contain records with inaccurate coordinates, zero/swapped lat-lon values, or centroids assigned to ocean bounding areas.   
+image_f23b3c.jpg
+
+You can fix this by performing a Spatial Clip / Masking using a land boundary shapefile, or by filtering out points where your environmental grid returns NoData (null values).
+
+Solution 1: Filter using the Land Cover / Climate Raster (Easiest)
+Since terrestrial species like Pyrus calleryana cannot exist over water, any point landing on a NoData pixel in your raster (e.g., nlcd_landcover.tif or WorldClim temperature rasters) is an ocean outlier and should be dropped.   
+image_0b3758.png
++ 1
+
+Add this code snippet right after you load your GeoDataFrame (gdf_occurrences):   
+image_0ac9da.png
+
+Python
+import rasterio
+
+# Open one of your terrestrial rasters (e.g., NLCD land cover or Bio1)
+with rasterio.open(landcover_path) as src:
+    # Get coordinates in the CRS matching the raster
+    coords = [(x, y) for x, y in zip(gdf_occurrences.geometry.x, gdf_occurrences.geometry.y)]
+    
+    # Sample the raster value at each point location
+    sampled_vals = [val[0] for val in src.sample(coords)]
+    
+    # Store sampled values
+    gdf_occurrences['land_val'] = sampled_vals
+    
+    # Filter out ocean/NoData pixels (NLCD NoData is usually 0, WorldClim is -9999 or NaN)
+    # Adjust condition depending on your raster (e.g., > 0 or not np.isnan)
+    gdf_clean = gdf_occurrences[
+        (gdf_occurrences['land_val'] > 0) & 
+        (gdf_occurrences['land_val'] != src.nodata)
+    ].copy()
+
+print(f"Removed {len(gdf_occurrences) - len(gdf_clean)} marine/ocean outlier points.")
+Solution 2: Spatial Clip using US State/County Boundaries
+If you want to strictly keep points that fall inside the land borders of Mid-Atlantic states (VA, MD, DE, NC, PA, NJ):
+
+Python
+import geopandas as gpd
+
+# Load low-resolution US States polygon dataset built into GeoPandas
+us_states = gpd.read_file(gpd.datasets.get_path('naturalearth_lowres'))
+
+# Filter to USA and reproject to match your occurrence CRS (EPSG:4326 or EPSG:3857)
+land_boundary = us_states[us_states['iso_a3'] == 'USA'].to_crs(gdf_occurrences.crs)
+
+# Perform a spatial clip to remove points outside land polygons
+gdf_clean = gpd.clip(gdf_occurrences, land_boundary)
+
+# Now plot gdf_clean instead of gdf_occurrences
+Why this happens in GBIF data:
+County Centroid Default: Observers sometimes enter only the County name (e.g., Accomack County, VA), and automated geocoders place the lat/lon directly in the geographical center of the county polygon—which often falls into tidal marshes, bays, or open ocean.
+
+Precision Loss: Geocoordinates rounded to 1 decimal place can shift terrestrial observations miles out into coastal waters.
+
